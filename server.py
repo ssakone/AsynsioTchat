@@ -25,28 +25,46 @@ class ConnectionPool:
 	def brodcast(self, writer, message):
 
 		# pass general message
+		for user in self.connection_pool:
+			if user != writer:
+
+				user.write(f"{message}".encode())
 
 		pass 
 	def brodcast_user_join(self, writer):
 
 		# called when user join
+		self.brodcast(writer, f"{writer.nickname} just joined\n")
 
 		pass 
 	def brodcast_user_quit(self, writer):
 
 		# called when user quit
+		self.brodcast(writer, f"{writer.nickname} just quit\n")
 
 		pass 
 	def brodcast_new_message(self, writer, message):
 
 		# called for user new message
+		self.brodcast(writer, f"{writer.nickname}: {message}\n")
 
 		pass
 	def list_users(self, writer):
 
 		# list of all user in the pool
+		message = "===\n"
+		message += "Currently connected users:"
+		
+		for user in self.connection_pool:
+			if user == writer: 
+				message += f"\n - {user.nickname} (you)"
+			else: 
+				message += f"\n - {user.nickname}"
+		message += "\n==="
 
+		writer.write(f"{message}\n".encode())
 		pass 
+
 	def add_new_user_to_pool(self, writer):
 
 		# add user to pool
@@ -66,12 +84,35 @@ async def handle_connection(reader, writer):
 
 	connection_pool.add_new_user_to_pool(writer)
 	connection_pool.send_welcome_message(writer)
+	connection_pool.brodcast_user_join(writer)
 
-	await writer.drain()
+
+	while True: 
+
+		try:
+			data = await reader.readuntil(b"\n")
+		except asyncio.exceptions.IncompleteReadError:
+			connection_pool.brodcast_user_quit(writer)
+			break
+
+		message = data.decode().strip()
+		if message == "/list":
+			connection_pool.list_users(writer)
+		elif message == "/quit":
+			connection_pool.brodcast_user_quit(writer)
+			break
+		else: 
+			connection_pool.brodcast_new_message(writer,message)
+	
+		await writer.drain()
+
+		if writer.is_closing():
+			break
 
 	writer.close()
 
 	await writer.wait_closed()
+	connection_pool.remove_user_to_pool(writer)
 
 async def main():
 
